@@ -1,15 +1,21 @@
-# TrainerHub — Phase 2
+# TrainerHub — Phase 3
 
 A real server and HTTP API implementing **PRD v0.1** and **Product & UX Specification v0.1 + Critical TDD**.
 Same fifteen screens and same behaviour as the Phase 1 prototype — but the product rules now live on the
 server, and the browser holds no truth.
 
-**Zero runtime dependencies.** Node 18+ and nothing else.
+Node 18+. One dependency (`pg`). Data lives in Postgres.
 
 ```bash
-node server.js          # http://127.0.0.1:3000
-npm test                # 68 tests: 43 API + 25 client-render
+npm install
+node server.js          # http://127.0.0.1:3000  (file store, for local dev)
+npm test                # 80 tests: 43 API + 25 client-render + 12 db contract
+DATABASE_URL='postgres://...' npm run test:pg    # against a real database
 ```
+
+**Going live? See [NEON-SETUP.md](NEON-SETUP.md).** In production the app
+refuses to start without `DATABASE_URL`, because a file store on Render loses
+every booking when the service spins down.
 
 Admin sign-in: `admin@trainerhub.app` / `admin123`
 
@@ -59,11 +65,27 @@ fresh object from an explicit field list rather than spreading the row:
 Leaking the link would require a deliberate edit to that file. It cannot happen by someone adding a field
 to a session row somewhere else.
 
-### Why the concurrency fix works
+### Why the concurrency fix works (Phase 3)
 
-Node processes one request handler at a time, so the read-modify-write inside `store.mutate()` cannot
-interleave with another request's. That makes the slot check a genuine check-and-set. **This holds for a
-single process only** — see the Phase 3 notes.
+The database decides, not the application:
+
+```sql
+CREATE UNIQUE INDEX sessions_active_slot_uniq
+  ON sessions (session_date, slot)
+  WHERE status IN ('RESERVED', 'PUBLISHED');
+```
+
+Claiming a slot is an INSERT. If another request already holds it, Postgres raises a unique violation
+which becomes the existing `409 SLOT_TAKEN`. Rejected and cancelled rows sit outside the index, so
+releasing a slot is genuinely releasing it while the history is kept. **This holds across any number of
+instances** — the Phase 2 single-process caveat is gone.
+
+### Storage backends
+
+`src/repo.js` picks one: Postgres when `DATABASE_URL` is set, otherwise a local JSON file for
+development and tests. Everything above it — `api.js`, `domain.js`, `serialize.js`, the client — is
+identical either way, which is how the 68 pre-existing tests still prove the migration changed no
+behaviour.
 
 ---
 

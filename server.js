@@ -10,7 +10,8 @@ const path = require("path");
 
 const api   = require("./src/api");
 const auth  = require("./src/auth");
-const store = require("./src/store");
+const repo  = require("./src/repo");
+const seed  = require("./src/seed");
 
 const PORT = Number(process.env.PORT || 3000);
 /* Containers and PaaS platforms route traffic to the container's external
@@ -98,7 +99,7 @@ function serveStatic(req, res, urlPath){
 /* ------------------------------------------------------------------ router */
 const ROUTES = [
   // platform health check
-  ["GET",  /^\/api\/healthz$/,                      ()             => ({ ok: true, uptime: Math.round(process.uptime()) })],
+  ["GET",  /^\/api\/healthz$/,                      async ()       => ({ ok: await repo.healthy(), storage: repo.backend, uptime: Math.round(process.uptime()) })],
   // public
   ["GET",  /^\/api\/bootstrap$/,                    (req)          => api.getBootstrap(req)],
   ["GET",  /^\/api\/calendar$/,                     ()             => api.getCalendar()],
@@ -109,7 +110,7 @@ const ROUTES = [
   ["POST", /^\/api\/sessions\/([\w-]+)\/register$/, (req,res,m,b)  => api.registerParticipant(m[1], b)],
 
   // admin
-  ["POST", /^\/api\/admin\/login$/,                 (req,res,m,b)  => api.adminLogin(b, res)],
+  ["POST", /^\/api\/admin\/login$/,                 (req,res,m,b)  => api.adminLogin(req, b, res)],
   ["POST", /^\/api\/admin\/logout$/,                (req,res)      => api.adminLogout(req, res)],
   ["GET",  /^\/api\/admin\/me$/,                    (req)          => api.adminMe(req)],
   ["GET",  /^\/api\/admin\/dashboard$/,             (req)          => api.adminDashboard(req)],
@@ -175,23 +176,41 @@ if (require.main === module){
     if (process.env.TRAINERHUB_ALLOW_DEFAULT_PASSWORD !== "1") process.exit(1);
   }
 
-  store.init();
-  server.listen(PORT, HOST, () => {
-    console.log(`TrainerHub Phase 2 listening on ${HOST}:${PORT}${IS_PRODUCTION ? " (production)" : ""}`);
-    console.log(`Data file: ${store.DATA_FILE}`);
-    console.log(`Admin email: ${auth.ADMIN_EMAIL}`);
-    if (!IS_PRODUCTION && auth.USING_DEFAULT_PASSWORD) console.log(`Admin password: admin123 (demo default)`);
-    if (auth.SECURE_COOKIES) console.log("Secure cookies ON — the session cookie requires HTTPS.");
-    console.log(api.DEMO_ROUTES_ENABLED
-      ? "Demo routes ENABLED. Anyone can reset the data — keep them off on a shared URL."
-      : "Demo routes disabled.");
-  });
+  repo.assertProductionSafe();
+
+  (async () => {
+    try {
+      const info = await repo.init();
+      console.log(`Storage: ${info.backend}${info.sessionCount != null ? ` (${info.sessionCount} sessions)` : ""}`);
+      if (seed.seedRequested()){
+        const r = await repo.seedIfEmpty(() => seed.demoSessions());
+        console.log(r.seeded
+          ? `Seeded ${r.count} demo sessions into an empty store.`
+          : `Seed skipped — store already holds ${r.existing} sessions.`);
+      }
+    } catch (err){
+      console.error("\nFAILED TO INITIALISE STORAGE:", err.message);
+      console.error("The server will not start without working storage.\n");
+      process.exit(1);
+    }
+
+    server.listen(PORT, HOST, () => {
+      console.log(`TrainerHub Phase 3 listening on ${HOST}:${PORT}${IS_PRODUCTION ? " (production)" : ""}`);
+      console.log(`Admin email: ${auth.ADMIN_EMAIL}`);
+      if (!IS_PRODUCTION && auth.USING_DEFAULT_PASSWORD) console.log(`Admin password: admin123 (demo default)`);
+      if (auth.SECURE_COOKIES) console.log("Secure cookies ON — the session cookie requires HTTPS.");
+      console.log(`Login rate limit: ${auth.MAX_FAILED_ATTEMPTS} failures per ${auth.ATTEMPT_WINDOW_MIN} min per IP.`);
+      console.log(api.DEMO_ROUTES_ENABLED
+        ? "Demo routes ENABLED. Anyone can reset the data — keep them off on a shared URL."
+        : "Demo routes disabled.");
+    });
+  })();
 
   // Platforms send SIGTERM on redeploy; close cleanly so the last write lands.
   for (const sig of ["SIGTERM", "SIGINT"]){
     process.on(sig, () => {
       console.log(`\n${sig} received — shutting down.`);
-      server.close(() => process.exit(0));
+      server.close(async () => { try { await repo.close(); } catch {} process.exit(0); });
       setTimeout(() => process.exit(0), 5000).unref();
     });
   }

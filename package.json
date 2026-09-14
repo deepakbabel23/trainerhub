@@ -1,18 +1,23 @@
 {
   "name": "trainerhub",
-  "version": "2.0.0",
-  "description": "TrainerHub \u2014 Phase 2: a real server and API implementing PRD v0.1 / SPEC v0.1. Zero runtime dependencies.",
+  "version": "3.0.0",
+  "description": "TrainerHub \u2014 Phase 3: Postgres-backed booking portal implementing PRD v0.1 / SPEC v0.1.",
   "main": "server.js",
   "engines": {
     "node": ">=18"
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node test/acceptance.js && node test/ui-render.js",
+    "test": "node test/acceptance.js && node test/ui-render.js && node test/repo-pg-contract.js",
     "test:api": "node test/acceptance.js",
     "test:ui": "node test/ui-render.js",
-    "verify": "node test/verify-deployment.js"
+    "verify": "node test/verify-deployment.js",
+    "test:pg": "node test/postgres.js",
+    "test:contract": "node test/repo-pg-contract.js"
   },
   "private": true,
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "dependencies": {
+    "pg": "^8.13.1"
+  }
 }
