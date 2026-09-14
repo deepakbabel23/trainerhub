@@ -1,0 +1,21 @@
+# Render Blueprint — deploys TrainerHub as a single always-on web service.
+#
+# numInstances is pinned to 1 deliberately: the slot-uniqueness guarantee comes
+# from Node's single-threaded request handling. Two instances sharing one data
+# file would reintroduce the double-booking race this phase exists to close.
+services:
+  - type: web
+    name: trainerhub
+    runtime: node
+    plan: free
+    numInstances: 1
+    buildCommand: "echo no build step required"
+    startCommand: "node server.js"
+    healthCheckPath: /api/healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRAINERHUB_ADMIN_EMAIL
+        sync: false          # set in the Render dashboard
+      - key: TRAINERHUB_ADMIN_PASSWORD
+        sync: false          # set in the Render dashboard — never commit this

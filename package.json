@@ -1,0 +1,18 @@
+{
+  "name": "trainerhub",
+  "version": "2.0.0",
+  "description": "TrainerHub \u2014 Phase 2: a real server and API implementing PRD v0.1 / SPEC v0.1. Zero runtime dependencies.",
+  "main": "server.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/acceptance.js && node test/ui-render.js",
+    "test:api": "node test/acceptance.js",
+    "test:ui": "node test/ui-render.js",
+    "verify": "node test/verify-deployment.js"
+  },
+  "private": true,
+  "license": "UNLICENSED"
+}
