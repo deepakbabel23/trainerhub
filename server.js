@@ -99,7 +99,20 @@ function serveStatic(req, res, urlPath){
 /* ------------------------------------------------------------------ router */
 const ROUTES = [
   // platform health check
-  ["GET",  /^\/api\/healthz$/,                      async ()       => ({ ok: await repo.healthy(), storage: repo.backend, uptime: Math.round(process.uptime()) })],
+  /* Liveness. Deliberately does NOT touch the database.
+     Render polls this continuously while the service is awake. If it queried
+     Postgres, it would hold Neon's compute open around the clock and burn
+     through the free plan's 100 CU-hours mid-month — at which point Neon
+     suspends compute and the app cannot connect at all. Liveness answers
+     "is the process up"; readiness answers "can it reach its database". */
+  ["GET",  /^\/api\/healthz$/,                      ()             => ({ ok: true, storage: repo.backend, uptime: Math.round(process.uptime()) })],
+  /* Readiness. Actually queries the database — use it for verification, never
+     as a monitoring endpoint you poll on a schedule. */
+  ["GET",  /^\/api\/readyz$/,                       async ()       => {
+     const ok = await repo.healthy();
+     if (!ok) throw new api.HttpError(503, "NOT_READY", "The database is not reachable.");
+     return { ok: true, storage: repo.backend, uptime: Math.round(process.uptime()) };
+  }],
   // public
   ["GET",  /^\/api\/bootstrap$/,                    (req)          => api.getBootstrap(req)],
   ["GET",  /^\/api\/calendar$/,                     ()             => api.getCalendar()],

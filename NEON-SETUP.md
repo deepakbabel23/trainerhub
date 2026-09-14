@@ -128,15 +128,42 @@ database, and only when you ask for it with `TRAINERHUB_SEED=demo`.
 
 ---
 
+## Do not keep the database awake
+
+There is one interaction that can take your site down mid-month, and it is not obvious.
+
+Neon free includes **100 compute-hours**. The smallest compute is 0.25 CU, so a
+database kept awake around the clock costs roughly `730 × 0.25 ≈ 182` CU-hours —
+**almost twice the allowance.** When you exhaust it, Neon suspends compute until
+the next billing period: your data is safe, but the app cannot connect at all.
+
+So if you set up a keep-warm ping to dodge Render's cold start, **point it at a
+route that does not touch the database.**
+
+- `GET /api/healthz` — liveness only. Never queries Postgres. Safe to poll, and
+  it is what Render's own health check uses.
+- `GET /api/readyz` — actually queries the database. Use it to verify a deploy.
+  **Never put this on a schedule.**
+
+Letting Neon sleep is the right default. It wakes in about half a second and
+loses nothing.
+
 ## Free tier limits, honestly
 
 **Neon free:** 0.5 GB storage, one project. A booking row is well under 1 KB —
 two slots a day is ~730 rows a year, so storage is a non-issue for years.
 
-**Neon autosuspends** an idle database after ~5 minutes. The first query after
-that takes an extra ~500ms while it wakes. Combined with Render's own 15-minute
-spin-down, a first visitor after a quiet period may wait a couple of seconds.
-Both wake automatically; nothing is lost.
+**"Scales to zero when inactive"** is Neon's compute sleeping after ~5 minutes
+idle — not your data going anywhere. Neon stores data on a durable layer that is
+architecturally separate from the compute process, so suspending compute cannot
+touch it. The first query after a sleep takes an extra ~500ms while it wakes.
+Combined with Render's own 15-minute spin-down, a first visitor after a quiet
+period may wait a couple of seconds. Both wake automatically; nothing is lost.
+
+**Region cannot be changed later.** Pick the region closest to your Render
+service when you create the project — moving means creating a new project and
+migrating the data. A Render service in Oregon querying a Neon database in
+Virginia adds a cross-country round trip to every single query.
 
 **Render free** still spins down after 15 minutes — but now that only costs a
 cold start, not your data. That was the whole point.
